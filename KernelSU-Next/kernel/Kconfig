@@ -1,0 +1,136 @@
+menu "KernelSU"
+
+config KSU
+	tristate "KernelSU function support"
+	default y
+	help
+	  Enable kernel-level root privileges on Android System.
+	  Requires CONFIG_KPROBES for kernel hooking support.
+	  To compile as a module, choose M here: the
+	  module will be called kernelsu.
+
+config KSU_DEBUG
+	bool "KernelSU debug mode"
+	depends on KSU
+	default n
+	help
+	  Enable KernelSU debug mode.
+
+config KSU_ALLOWLIST_WORKAROUND
+	bool "KernelSU allowlist workaround"
+	depends on KSU
+	default n
+	help
+	  Enable workaround for broken allowlist save
+
+# For easier extern ifdef handling
+config KSU_MANUAL_HOOK
+	bool "KernelSU manual hook mode."
+	depends on KSU && KSU != m
+	default y if !KPROBES
+	default n
+	help
+	  Enable manual hook support.
+
+config KSU_KPROBES_HOOK
+	bool "KernelSU tracepoint+kretprobe hook"
+	depends on KSU && !KSU_MANUAL_HOOK
+	depends on KRETPROBES && KPROBES && HAVE_SYSCALL_TRACEPOINTS
+	default y if KPROBES && KRETPROBES && HAVE_SYSCALL_TRACEPOINTS
+	default y if !KSU_MANUAL_HOOK
+	help
+	  Enable KPROBES, KRETPROBES and TRACEPOINT hook for KernelSU core.
+	  This should not be used on kernel below 5.10.
+
+endmenu
+
+menu "SUSFS (KernelSU)"
+
+config KSU_SUSFS
+	bool "Enable SUSFS for KernelSU"
+	depends on KSU
+	help
+	  Enable SUSFS integration for KernelSU. Required for the userspace
+	  SUSFS tool to operate.
+
+config KSU_SUSFS_HAS_MAGIC_MOUNT
+	bool "Allow magic mount" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_PATH
+	bool "Protected SUS paths" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "Protected SUS mounts" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+	bool "Auto add SUS mount for KSU default" if KSU_SUSFS
+	depends on KSU_SUSFS_SUS_MOUNT
+	default y
+
+config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+	bool "Auto add SUS bind mount" if KSU_SUSFS
+	depends on KSU_SUSFS_SUS_MOUNT
+	default y
+
+config KSU_SUSFS_TRY_UMOUNT
+	bool "Try umount SUS mounts" if KSU_SUSFS
+	depends on KSU_SUSFS_SUS_MOUNT
+	default y
+
+config KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+	bool "Auto add try-umount for bind mounts" if KSU_SUSFS
+	depends on KSU_SUSFS_TRY_UMOUNT
+	default y
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "Hide kstat for SUS" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_MAP
+	bool "Hide pagemap for SUS" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_SU
+	bool "Hide su binary" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_OVERLAYFS
+	bool "Protect overlayfs entries" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SPOOF_UNAME
+	bool "Spoof uname" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+	bool "Spoof cmdline/bootconfig" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_OPEN_REDIRECT
+	bool "Open redirect" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_ENABLE_LOG
+	bool "Enable SUSFS logging" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+	bool "Hide SUSFS symbols" if KSU_SUSFS
+	depends on KSU_SUSFS
+	default y
+
+endmenu
