@@ -1,9 +1,9 @@
 #ifndef __KSU_H_SELINUX
 #define __KSU_H_SELINUX
 
-#include "linux/types.h"
-#include "linux/version.h"
-#include "linux/cred.h"
+#include <linux/types.h>
+#include <linux/version.h>
+#include <linux/cred.h>
 
 #include "objsec.h"
 #include "security.h" // Samsung SELinux Porting
@@ -31,14 +31,14 @@ static inline u32 current_sid(void)
 }
 #endif
 
-// TODO: rename to "ksu"
-#define KERNEL_SU_DOMAIN "su"
+#define KERNEL_SU_DOMAIN "ksu"
 #define KERNEL_SU_FILE "ksu_file"
 
 #define KERNEL_SU_CONTEXT "u:r:" KERNEL_SU_DOMAIN ":s0"
 #define KSU_FILE_CONTEXT "u:object_r:" KERNEL_SU_FILE ":s0"
 #define ZYGOTE_CONTEXT "u:r:zygote:s0"
 #define INIT_CONTEXT "u:r:init:s0"
+#define PRIV_APP_CONTEXT "u:r:priv_app:s0:c512,c768"
 
 void setup_selinux(const char *, struct cred *);
 
@@ -56,24 +56,22 @@ bool is_zygote(const struct cred* cred);
 
 bool is_init(const struct cred* cred);
 
+bool susfs_is_sid_equal(const struct cred *cred, u32 sid);
+
+u32 susfs_get_current_sid(void);
+
+bool susfs_is_current_ksu_domain(void);
+
 void apply_kernelsu_rules();
 
-int handle_sepolicy(unsigned long arg3, void __user *arg4);
+int handle_sepolicy(void __user *user_data, u64 data_len);
 
 void setup_ksu_cred();
 
-#ifdef CONFIG_KSU_SUSFS
-bool susfs_is_sid_equal(const struct cred *cred, u32 sid2);
-u32 susfs_get_sid_from_name(const char *secctx_name);
-u32 susfs_get_current_sid(void);
-void susfs_set_zygote_sid(void);
-bool susfs_is_current_zygote_domain(void);
-void susfs_set_ksu_sid(void);
-bool susfs_is_current_ksu_domain(void);
-void susfs_set_init_sid(void);
-bool susfs_is_current_init_domain(void);
-void susfs_set_priv_app_sid(void);
+extern u32 ksu_file_sid;
+extern u32 susfs_ksu_sid;
+extern u32 susfs_init_sid;
 extern u32 susfs_zygote_sid;
-#endif // #ifdef CONFIG_KSU_SUSFS
+extern u32 susfs_priv_app_sid;
 
 #endif
