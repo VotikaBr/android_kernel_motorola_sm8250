@@ -352,7 +352,11 @@ static void show_vma_header_prefix(struct seq_file *m,
 }
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-extern void susfs_sus_ino_for_show_map_vma(unsigned long ino, dev_t *out_dev, unsigned long *out_ino);
+extern void susfs_sus_kstat_spoof_show_map_vma(struct inode *inode, dev_t *out_dev, unsigned long *out_ino);
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+extern int susfs_open_redirect_spoof_show_map_vma(struct inode *inode, unsigned long *out_ino,
+						  dev_t *out_dev, char *spoofed_name);
 #endif
 
 static void
@@ -360,19 +364,30 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct file *file = vma->vm_file;
+	struct inode *inode = NULL;
 	vm_flags_t flags = vma->vm_flags;
 	unsigned long ino = 0;
 	unsigned long long pgoff = 0;
 	unsigned long start, end;
 	dev_t dev = 0;
 	const char *name = NULL;
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	char spoofed_redirected_name[SUSFS_MAX_LEN_PATHNAME] = { 0 };
+#endif
 
 	if (file) {
-		struct inode *inode = file_inode(vma->vm_file);
+		inode = file_inode(vma->vm_file);
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
+			if (!susfs_open_redirect_spoof_show_map_vma(inode, &ino, &dev,
+							   spoofed_redirected_name)) {
+				pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
+				goto bypass_orig_flow;
+			}
+		}
+#endif
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-		if (inode->i_mapping &&
-			unlikely(test_bit(AS_FLAGS_SUS_MAP, &inode->i_mapping->flags) &&
-			susfs_is_current_proc_umounted_app()))
+		if (SUSFS_IS_INODE_SUS_MAP(inode))
 		{
 			seq_setwidth(m, 25 + sizeof(void *) * 6 - 1);
 			seq_put_hex_ll(m, NULL, vma->vm_start, 8);
@@ -395,7 +410,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 			unlikely(test_bit(AS_FLAGS_SUS_KSTAT, &inode->i_mapping->flags) &&
 			susfs_is_current_proc_umounted_app()))
 		{
-			susfs_sus_ino_for_show_map_vma(inode->i_ino, &dev, &ino);
+			susfs_sus_kstat_spoof_show_map_vma(inode, &dev, &ino);
 			goto bypass_orig_flow;
 		}
 #endif
@@ -417,6 +432,12 @@ bypass_orig_flow:
 	 */
 	if (file) {
 		seq_pad(m, ' ');
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		if (spoofed_redirected_name[0] != '\0') {
+			seq_puts(m, spoofed_redirected_name);
+			goto done;
+		}
+#endif
 		seq_file_path(m, file, "\n");
 		goto done;
 	}
@@ -448,6 +469,8 @@ bypass_orig_flow:
 		if (vma_get_anon_name(vma)) {
 			seq_pad(m, ' ');
 			seq_print_vma_name(m, vma);
+			seq_putc(m, '\n');
+			return;
 		}
 	}
 

@@ -3913,7 +3913,8 @@ static struct file *path_openat(struct nameidata *nd,
 }
 
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-extern struct filename* susfs_get_redirected_path(unsigned long ino);
+extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
+extern int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode, char __user *buffer, int buflen);
 #endif
 
 struct file *do_filp_open(int dfd, struct filename *pathname,
@@ -3936,11 +3937,9 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 	if (!IS_ERR(filp)) {
 		inode = file_inode(filp);
-		if (inode->i_mapping &&
-			unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags)) &&
-			current_uid().val < 2000)
+		if (SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode))
 		{
-			fake_pathname = susfs_get_redirected_path(filp->f_inode->i_ino);
+			fake_pathname = susfs_open_redirect_spoof_do_sys_openat(filp->f_inode);
 			if (!IS_ERR(fake_pathname)) {
 				restore_nameidata();
 				filp_close(filp, NULL);
@@ -5154,6 +5153,14 @@ int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 	DEFINE_DELAYED_CALL(done);
 	const char *link;
 	int res;
+
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	if (SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode)) {
+		res = susfs_open_redirect_spoof_vfs_readlink(inode, buffer, buflen);
+		if (!res)
+			return 0;
+	}
+#endif
 
 	if (unlikely(!(inode->i_opflags & IOP_DEFAULT_READLINK))) {
 		if (unlikely(inode->i_op->readlink))

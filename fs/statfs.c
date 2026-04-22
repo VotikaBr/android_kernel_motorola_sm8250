@@ -9,8 +9,13 @@
 #include <linux/security.h>
 #include <linux/uaccess.h>
 #include <linux/compat.h>
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 #include <linux/susfs_def.h>
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+extern int susfs_open_redirect_spoof_vfs_statfs(struct inode *inode, struct kstatfs *buf);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include "mount.h"
 #endif
 #include "internal.h"
@@ -76,7 +81,16 @@ int vfs_statfs(const struct path *path, struct kstatfs *buf)
 	int error;
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	struct mount *mnt;
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	struct inode *inode = path->dentry->d_inode;
 
+	if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
+		if (!susfs_open_redirect_spoof_vfs_statfs(inode, buf))
+			return 0;
+	}
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	mnt = real_mount(path->mnt);
 	if (likely(susfs_is_current_proc_umounted_app())) {
 		for (; mnt->mnt_id >= DEFAULT_KSU_MNT_ID; mnt = mnt->mnt_parent) {}
