@@ -80,7 +80,7 @@ endif
 
 # Keep a safe minimum version for vendored trees without a dedicated
 # KernelSU-Next git repository.
-KSU_MIN_COMPAT_VERSION := 33110
+KSU_MIN_COMPAT_VERSION := 33150
 
 # Calculate version if git version is available
 ifdef KSU_GIT_VERSION_VALID
