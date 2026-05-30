@@ -695,13 +695,12 @@ static int parse_patch_data(char *value_p, u8 data[], long *bitmask_v)
 static int synaptics_dsx_parse_patch(int func, char *query,
 		struct synaptics_dsx_patch *patch_ptr, bool expect_data)
 {
-	int i, error, rt_mod, function, num_of_bytes;
+	int i, error, function, num_of_bytes;
 	u8 data[64];
 	char *next, *subpkt_p, *value_p, *pair = query;
 	long regstr_v, bitmask_v, subpkt_v;
 	struct synaptics_dsx_func_patch *patch;
 
-	rt_mod = func & 0xf00;
 	function = func & 0xff;
 	for (i = 0; pair; pair = next, i++) {
 		num_of_bytes = 0;
@@ -3801,7 +3800,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	int y;
 	int p;
 	int w;
-	int id;
 #ifdef USE_TIME_SYNC_EVENTS
 	struct timespec hw_time = ktime_to_timespec(ktime_get());
 #endif
@@ -3858,7 +3856,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			x = finger_data->x_lsb | (finger_data->x_msb << 8);
 			y = finger_data->y_lsb | (finger_data->y_msb << 8);
 			p = w = finger_data->z;
-			id = finger;
 
 			if (rmi4_data->board.x_flip)
 				x = rmi4_data->sensor_max_x - x;
@@ -4297,9 +4294,12 @@ static void synaptics_rmi4_f51_handler(struct synaptics_rmi4_data *rmi4_data,
 	struct f54_d16_s0_type *f54_d16_0;
 	struct f54_d17_s0_type *f54_d17_0;
 	struct f51_d0_s0_type *f51_d0_0;
+#if 0
 	unsigned char presence_mask = 0;
+	int ii;
+#endif
 	//ktime_t log = ktime_get();
-	int ii, error;
+	int error;
 
 	regs = find_function(rmi4_data, SYNAPTICS_RMI4_F51 | DATA_TYPE);
 	if (!regs)
@@ -4319,11 +4319,11 @@ static void synaptics_rmi4_f51_handler(struct synaptics_rmi4_data *rmi4_data,
 	if (!subpkt || !subpkt->present)
 		return;
 
+#if 0
 	presence_mask |= (1 << GUARD_BIT);
 	pr_debug("F%x@D%d: int status [0]=0x%x, [1]=0x%x\n",
 			regs->f_number & 0xff, reg->r_number,
 			f51_d0_0->data[0], f51_d0_0->data[1]);
-#if 0
 	tk_debug("F%x@D%d: int status [%s][%s][%s] md = %d\n",
 			regs->f_number & 0xff, reg->r_number,
 			f51_d0_0->noise_state ? "N" : "-",
@@ -4335,9 +4335,11 @@ static void synaptics_rmi4_f51_handler(struct synaptics_rmi4_data *rmi4_data,
 	if (!regs)
 		return;
 
+#if 0
 	/* not all features might be enabled, thus determine presence */
 	for (ii = 0; ii < regs->nr_regs; ii++)
 		presence_mask |= (1 << ii);
+#endif
 
 	error = synaptics_rmi4_read_packet_regs(rmi4_data, regs);
 	if (error < 0)
@@ -6080,7 +6082,6 @@ static void synaptics_rmi4_detection_work(struct work_struct *work)
 				__func__, exp_fhandler->fn_type);
 
 		if (exp_fhandler->fn_type == RMI_F54 && rmi4_data->f54_data) {
-			int scan_failures = 0;
 			struct synaptics_rmi4_func_packet_regs *regs;
 
 			regs = find_function(rmi4_data, SYNAPTICS_RMI4_F54);
@@ -6108,7 +6109,6 @@ static void synaptics_rmi4_detection_work(struct work_struct *work)
 			if (error) {
 				regs->nr_regs = 0;
 				dev_err(dev, "%s: F54_Data scan failed\n", __func__);
-				scan_failures++;
 			}
 
 			regs = find_function(rmi4_data, SYNAPTICS_RMI4_F54 | QUERY_TYPE);
@@ -6118,7 +6118,6 @@ static void synaptics_rmi4_detection_work(struct work_struct *work)
 			if (error) {
 				regs->nr_regs = 0;
 				dev_err(dev, "%s: F54_Query scan failed\n", __func__);
-				scan_failures++;
 			}
 		}
 
@@ -6585,19 +6584,6 @@ err_out:
 	return retval;
 }
 
-static int dummy_init(struct synaptics_rmi4_data *rmi4_data)
-{
-	struct synaptics_rmi4_data *ptr;
-	ptr = rmi4_data;
-	return 0;
-}
-
-static void dummy_remove(struct synaptics_rmi4_data *rmi4_data)
-{
-	struct synaptics_rmi4_data *ptr = rmi4_data;
-	ptr = rmi4_data;
-}
-
 static int dsx_pinctrl_init(struct synaptics_rmi4_data *info)
 {
 	int retval;
@@ -6832,7 +6818,7 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 			__func__);
 	synaptics_dsx_sensor_state(rmi4_data, STATE_UNKNOWN);
 	synaptics_rmi4_new_function(rmi4_data, RMI_DRM_FRAMEWORK, true,
-				dummy_init, dummy_remove, NULL, NULL, IC_MODE_ANY);
+				NULL, NULL, NULL, NULL, IC_MODE_ANY);
 	return 0;
 
 free_and_exit:
