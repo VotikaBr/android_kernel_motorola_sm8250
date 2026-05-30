@@ -106,6 +106,12 @@ ifeq ($(KERNEL_BUILD), 0)
 	ifeq ($(CONFIG_PSTAR_DTB), y)
                 INCS    +=  -include $(AUDIO_ROOT)/config/konanio.h
 	endif
+	ifeq ($(CONFIG_KIEV_DTB), y)
+		INCS    +=  -include $(AUDIO_ROOT)/config/litokiev.h
+	endif
+	ifeq ($(CONFIG_NAIRO_DTB), y)
+		INCS    +=  -include $(AUDIO_ROOT)/config/litonairo.h
+	endif
 endif
 
 
