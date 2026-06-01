@@ -2290,18 +2290,17 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		u64 hash_len;
 		int type;
 
-		err = may_lookup(nd);
-		if (err)
-			return err;
-
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		dentry = nd->path.dentry;
 		if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
-			// - No need to dput() here
-			// - return -ENOENT here since it is walking the sub path of sus path
+			/* Walking inside a hidden path should look like non-existent. */
 			return -ENOENT;
 		}
 #endif
+
+		err = may_lookup(nd);
+		if (err)
+			return err;
 
 		hash_len = hash_name(nd->path.dentry, name);
 
