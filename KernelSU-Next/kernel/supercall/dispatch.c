@@ -481,16 +481,11 @@ static int do_manage_mark(void __user *arg)
 static int do_get_hook_mode(void __user *arg)
 {
 	struct ksu_get_hook_mode_cmd cmd = {0};
-	const char *type = "Kprobes";
-
-#ifndef KSU_KPROBES_HOOK
-	type = "Manual";
-#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
-	strscpy(cmd.mode, type, sizeof(cmd.mode));
+    strscpy(cmd.mode, "Inline (SuSFS)", sizeof(cmd.mode));
 #else
-	strlcpy(cmd.mode, type, sizeof(cmd.mode));
+    strlcpy(cmd.mode, "Inline (SuSFS)", sizeof(cmd.mode));
 #endif
 
 	if (copy_to_user(arg, &cmd, sizeof(cmd))) {

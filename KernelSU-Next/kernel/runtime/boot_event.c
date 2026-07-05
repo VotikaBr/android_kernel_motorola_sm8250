@@ -14,8 +14,6 @@ bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;
 extern void stop_input_hook();
 
-extern void ksu_avc_spoof_late_init();
-
 void on_post_fs_data(void)
 {
 	static bool done = false;
@@ -67,5 +65,4 @@ void on_boot_completed(void)
     ksu_boot_completed = true;
     pr_info("on_boot_completed!\n");
     track_throne(true);
-    ksu_avc_spoof_late_init();
 }
