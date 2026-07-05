@@ -7,6 +7,7 @@
 #include <linux/fs.h>
 #include <linux/types.h>
 #include <linux/version.h>
+#include <linux/fs_struct.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/pgtable.h>
 #endif
@@ -100,6 +101,10 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
 
 	if (unlikely(!memcmp(path, su, sizeof(su)))) {
+		if (current_chrooted()) {
+			pr_err("faccessat: su found but not allowed in chroot\n");
+			return 0;
+		}
 		write_sulog('a');
 		pr_info("faccessat su->sh!\n");
 		*filename_user = sh_user_path();
@@ -126,6 +131,10 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
 
 	if (unlikely(!memcmp(path, su, sizeof(su)))) {
+		if (current_chrooted()) {
+			pr_err("newfstatat: su found but not allowed in chroot\n");
+			return 0;
+		}
 		write_sulog('s');
 		pr_info("newfstatat su->sh!\n");
 		*filename_user = sh_user_path();
@@ -165,6 +174,11 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, 
 
 	if (likely(memcmp(path, su, sizeof(su))))
 		goto do_orig_execve;
+
+	if (current_chrooted()) {
+		pr_err("execve: su found but not allowed in chroot\n");
+		goto do_orig_execve;
+	}
 
     write_sulog('x');
 
@@ -213,6 +227,12 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 	if (likely(memcmp(filename->name, su, sizeof(su))))
 		return 0;
 
+	if (current_chrooted()) {
+		pr_err("execveat: su found but not allowed in chroot\n");
+		return 0;
+	}
+
+	write_sulog('x');
 	pr_info("do_execveat_common su found\n");
 	memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
 
