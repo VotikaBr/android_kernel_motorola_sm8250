@@ -32,7 +32,7 @@
 #include "compat/kernel_compat.h"
 
 #define FILE_MAGIC 0x7f4b5355 // ' KSU', u32
-#define FILE_FORMAT_VERSION 3 // u32
+#define FILE_FORMAT_VERSION 4 // u32
 
 #define KSU_APP_PROFILE_PRESERVE_UID 9999 // NOBODY_UID
 #define KSU_DEFAULT_SELINUX_DOMAIN "u:r:" KERNEL_SU_DOMAIN ":s0"
@@ -76,6 +76,7 @@ static void init_default_profiles()
            sizeof(default_root_profile.capabilities.effective));
     default_root_profile.namespaces = KSU_NS_INHERITED;
     strcpy(default_root_profile.selinux_domain, KSU_DEFAULT_SELINUX_DOMAIN);
+    default_root_profile.flags = 0;
 
 	// This means that we will umount modules by default!
 	default_non_root_profile.umount_modules = true;
@@ -157,19 +158,12 @@ static bool profile_valid(struct app_profile *profile)
 		return false;
 	}
 
-	bool need_migrate_su_domain = false;
-
-	if (unlikely(profile->version == 2)) {
-		profile->version = KSU_APP_PROFILE_VER;
-		need_migrate_su_domain = true;
-	}
-
 	if (strnlen(profile->key, sizeof(profile->key)) >= sizeof(profile->key)) {
 		pr_err("invalid app_profile key\n");
 		return false;
 	}
 
-	if (profile->version < KSU_APP_PROFILE_VER) {
+	if (profile->version != KSU_APP_PROFILE_VER) {
 		pr_info("Unsupported profile version: %d\n", profile->version);
 		return false;
 	}
@@ -181,15 +175,8 @@ static bool profile_valid(struct app_profile *profile)
 			return false;
 		}
 
-		char *domain = profile->rp_config.profile.selinux_domain;
 		static const size_t domain_len = sizeof(profile->rp_config.profile.selinux_domain);
-		if (unlikely(need_migrate_su_domain)) {
-			if (strncmp(domain, "u:r:su:s0", domain_len) == 0) {
-				__strscpy_pad(domain, KSU_DEFAULT_SELINUX_DOMAIN, domain_len);
-				pr_info("migrated profile domain: %s\n", profile->key);
-			}
-		}
-		size_t len = strnlen(domain, domain_len);
+		size_t len = strnlen(profile->rp_config.profile.selinux_domain, domain_len);
 
 		if (len == 0 || len >= domain_len) {
 			pr_err("invalid selinux_domain in app_profile: %s\n", profile->key);
@@ -493,6 +480,34 @@ out:
     revert_creds(saved);
 }
 
+static void migrate_profile(u32 version, struct app_profile *profile)
+{
+    char *domain;
+    static const size_t domain_len = sizeof(profile->rp_config.profile.selinux_domain);
+
+    switch (version) {
+    case 2:
+        if (profile->allow_su) {
+            domain = profile->rp_config.profile.selinux_domain;
+            if (strncmp(domain, "u:r:su:s0", domain_len) == 0) {
+                strscpy(domain, KSU_DEFAULT_SELINUX_DOMAIN, domain_len);
+                size_t len = strlen(KSU_DEFAULT_SELINUX_DOMAIN);
+                if (len < domain_len)
+                    memset(domain + len, 0, domain_len - len);
+                pr_info("migrated domain of profile: %s\n", profile->key);
+            }
+        }
+        // no fallthrough here temporarily
+    case 3:
+        if (profile->allow_su) {
+            profile->rp_config.profile.flags = FLAG_KSU_NO_NEW_PRIVS;
+        }
+        break;
+    }
+
+    profile->version = KSU_APP_PROFILE_VER;
+}
+
 void ksu_persistent_allow_list(void)
 {
     schedule_work(&ksu_save_allow_list_work);
@@ -508,7 +523,8 @@ void ksu_load_allow_list()
 	ssize_t ret = 0;
 	struct file *fp = NULL;
 	u32 magic;
-	u32 version;
+	u32 version = 0;
+	size_t app_profile_size;
 
 #ifdef CONFIG_KSU_DEBUG
 	// always allow adb shell by default
@@ -536,24 +552,37 @@ void ksu_load_allow_list()
 
 	pr_info("allowlist version: %d\n", version);
 
+	if (version < 2 || version > KSU_APP_PROFILE_VER) {
+		pr_err("invalid allowlist version: %d\n", version);
+		goto exit;
+	}
+
+	static const size_t kAppProfileSizePreV4 = 776;
+	app_profile_size = version < KSU_APP_PROFILE_VER ? kAppProfileSizePreV4 : sizeof(struct app_profile);
+
 	while (true) {
 		struct app_profile profile;
 
-		ret = ksu_kernel_read_compat(fp, &profile, sizeof(profile), &off);
+		ret = ksu_kernel_read_compat(fp, &profile, app_profile_size, &off);
 
-		if (ret <= 0) {
-			pr_info("load_allow_list read err: %zd\n", ret);
+		if (ret != app_profile_size) {
+			if (ret != 0)
+				pr_info("load_allow_list read err: %zd\n", ret);
 			break;
 		}
 
-        pr_info("load_allow_uid, name: %s, uid: %d, allow: %d\n", profile.key,
+		migrate_profile(version, &profile);
+
+		pr_info("load_allow_uid, name: %s, uid: %d, allow: %d\n", profile.key,
                 profile.current_uid, profile.allow_su);
-        ksu_set_app_profile(&profile);
-    }
+		ksu_set_app_profile(&profile);
+	}
 
 exit:
 	ksu_show_allow_list();
 	filp_close(fp, 0);
+	if (version < KSU_APP_PROFILE_VER)
+		ksu_persistent_allow_list();
 }
 
 void ksu_prune_allowlist(bool (*is_uid_valid)(uid_t, char *, void *),

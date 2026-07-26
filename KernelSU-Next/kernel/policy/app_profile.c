@@ -153,6 +153,11 @@ int escape_with_root_profile(void)
 		goto out_abort_creds;
 	}
 
+	if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
+		pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
+		goto out_abort_creds;
+	}
+
     ksu_get_root_profile(cred->uid.val, &profile);
 
     cred->uid.val = profile.uid;
@@ -223,6 +228,11 @@ int escape_with_root_profile(void)
 #endif
 
     setup_mount_ns(profile.namespaces);
+
+	if (profile.flags & FLAG_KSU_NO_NEW_PRIVS) {
+		set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
+	}
+
 	return 0;
 
 out_abort_creds:
