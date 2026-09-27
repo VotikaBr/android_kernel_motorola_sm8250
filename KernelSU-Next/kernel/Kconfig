@@ -40,63 +40,6 @@ config KSU_ALLOWLIST_WORKAROUND
 	help
 	  Enable workaround for broken allowlist save
 
-menu "KernelSU - SUSFS"
-
-config KSU_SUSFS
-	bool "KernelSU addon - SUSFS"
-	depends on KSU
-	depends on THREAD_INFO_IN_TASK
-	default y
-	help
-	  Patch and enable SUSFS support integrated with KernelSU.
-
-config KSU_SUSFS_SUS_PATH
-	bool "Enable to hide suspicious path"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_SUS_MOUNT
-	bool "Enable to hide suspicious mounts"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_SUS_KSTAT
-	bool "Enable to spoof suspicious kstat"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_SPOOF_UNAME
-	bool "Enable to spoof uname"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_ENABLE_LOG
-	bool "Enable logging susfs log to kernel"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-	bool "Enable to automatically hide ksu and susfs symbols from /proc/kallsyms"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-	bool "Enable to spoof /proc/cmdline"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_OPEN_REDIRECT
-	bool "Enable to redirect a path to be opened with another path"
-	depends on KSU_SUSFS
-	default y
-
-config KSU_SUSFS_SUS_MAP
-	bool "Enable to hide mmapped real file from proc maps interfaces"
-	depends on KSU_SUSFS
-	default y
-
-endmenu
-
 # For easier extern ifdef handling
 config KSU_MANUAL_HOOK
 	bool "KernelSU manual hook mode."
@@ -106,14 +49,129 @@ config KSU_MANUAL_HOOK
 	help
 	  Enable manual hook support.
 
+choice
+	prompt "KernelSU dynamic hook mode"
+	depends on KSU && !KSU_MANUAL_HOOK
+	default KSU_KPROBES_HOOK
+
 config KSU_KPROBES_HOOK
 	bool "KernelSU tracepoint+kretprobe hook"
-	depends on KSU && !KSU_MANUAL_HOOK
 	depends on KRETPROBES && KPROBES && HAVE_SYSCALL_TRACEPOINTS
-	default y if KPROBES && KRETPROBES && HAVE_SYSCALL_TRACEPOINTS
-	default y if !KSU_MANUAL_HOOK
 	help
 	  Enable KPROBES, KRETPROBES and TRACEPOINT hook for KernelSU core.
 	  This should not be used on kernel below 5.10.
 
+config KSU_SYSCALL_TABLE_HOOK
+	bool "KernelSU syscall table patching hook"
+	depends on ARM64 || X86_64
+	help
+	  Patch sys_call_table entries directly to hook syscalls without
+	  kprobes or tracepoints. Intended for non-GKI kernels where kprobes
+	  are unavailable or non-functional.
+	  Requires kernel >= 4.17 (pt_regs-based syscall ABI).
+
+endchoice
+
+menu "KernelSU - SUSFS"
+config KSU_SUSFS
+	bool "KernelSU addon - SUSFS"
+	depends on KSU
+	default y
+	help
+	  Patch and Enable SUSFS to kernel with KernelSU.
+
+config KSU_SUSFS_SUS_PATH
+	bool "Enable to hide suspicious path"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow hiding the user-defined path and all its sub-paths from various system calls.
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "Enable to hide suspicious mounts"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow hiding all sus mounts from /proc/self/[mounts|mountinfo|mountstat] for non-su processes.
+
+config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+	bool "Enable to auto add sus bind mounts"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Automatically add sus bind mounts to the sus_path list on exec/fork.
+
+config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+	bool "Enable to auto add default KSU mounts to sus mounts"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Automatically mark KSU module mounts and overlay mounts as sus mounts.
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "Enable to spoof suspicious kstat"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow spoofing the kstat of user-defined file/directory.
+
+config KSU_SUSFS_SUS_OVERLAYFS
+	bool "Enable SuSFS OverlayFS hiding"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide overlayfs lowerdir/upperdir mounts used by root solutions.
+
+config KSU_SUSFS_TRY_UMOUNT
+	bool "Enable automatic try_umount for non-root processes"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Automatically umount suspicious mounts when an app is spawned.
+
+config KSU_SUSFS_SPOOF_UNAME
+	bool "Enable to spoof uname"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow spoofing the string returned by uname syscall.
+
+config KSU_SUSFS_ENABLE_LOG
+	bool "Enable logging susfs log to kernel"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow logging susfs log to kernel.
+
+config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+	bool "Enable to automatically hide ksu and susfs symbols from /proc/kallsyms"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Automatically hide ksu and susfs symbols from /proc/kallsyms.
+
+config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+	bool "Enable to spoof /proc/bootconfig (gki) or /proc/cmdline (non-gki)"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Spoof the output of /proc/cmdline (non-gki) or /proc/bootconfig (gki).
+
+config KSU_SUSFS_OPEN_REDIRECT
+	bool "Enable to redirect a path to be opened with another path"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow redirecting a target path to be opened with another user-defined path.
+
+config KSU_SUSFS_SUS_MAP
+	bool "Enable to hide some mmapped real file from different proc maps interfaces"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow hiding mmapped real file from /proc/<pid>/[maps|smaps].
+
 endmenu
+
+endmenu
+

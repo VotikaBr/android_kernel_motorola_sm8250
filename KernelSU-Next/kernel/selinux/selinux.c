@@ -22,14 +22,18 @@
 static u32 cached_su_sid __read_mostly = 0;
 static u32 cached_zygote_sid __read_mostly = 0;
 static u32 cached_init_sid __read_mostly = 0;
-static u32 cached_priv_app_sid __read_mostly = 0;
 u32 ksu_file_sid __read_mostly = 0;
+
+#ifdef CONFIG_KSU_SUSFS
 u32 susfs_ksu_sid __read_mostly = 0;
 u32 susfs_init_sid __read_mostly = 0;
 u32 susfs_zygote_sid __read_mostly = 0;
 u32 susfs_priv_app_sid __read_mostly = 0;
+static u32 cached_priv_app_sid __read_mostly = 0;
+#define PRIV_APP_CONTEXT "u:r:priv_app:s0"
+#endif
 
-static int transive_to_domain(const char *domain, struct cred *cred)
+static int transive_to_domain(const char *domain, struct cred *cred, bool clear_exec_sid)
 {
     struct task_security_struct *tsec;
     u32 sid;
@@ -51,6 +55,9 @@ static int transive_to_domain(const char *domain, struct cred *cred)
         tsec->create_sid = 0;
         tsec->keycreate_sid = 0;
         tsec->sockcreate_sid = 0;
+		if (clear_exec_sid) {
+            tsec->exec_sid = 0;
+        }
     }
     return error;
 }
@@ -80,7 +87,7 @@ is_ksu_transition(const struct task_security_struct *old_tsec,
 
 void setup_selinux(const char *domain, struct cred *cred)
 {
-    if (transive_to_domain(domain, cred)) {
+    if (transive_to_domain(domain, cred, false)) {
         pr_err("transive domain failed.\n");
         return;
     }
@@ -88,7 +95,7 @@ void setup_selinux(const char *domain, struct cred *cred)
 
 void setup_ksu_cred(void)
 {
-    if (ksu_cred && transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred)) {
+    if (ksu_cred && transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred, false)) {
         pr_err("setup ksu cred failed.\n");
     }
 }
@@ -135,6 +142,13 @@ struct lsm_context {
     u32 len;
 };
 
+#ifndef CONFIG_ANDROID
+int ksu_security_secctx_to_secid(const char *secdata, u32 seclen, u32 *secid)
+{
+	return security_secctx_to_secid(secdata, seclen, secid);
+}
+#endif
+
 static int __security_secid_to_secctx(u32 secid, struct lsm_context *cp)
 {
     return security_secid_to_secctx(secid, &cp->context, &cp->len);
@@ -165,7 +179,9 @@ void cache_sid(void)
         cached_su_sid = 0;
     } else {
         pr_info("Cached su SID: %u\n", cached_su_sid);
-		susfs_ksu_sid = cached_su_sid;
+#ifdef CONFIG_KSU_SUSFS
+        susfs_ksu_sid = cached_su_sid;
+#endif
     }
 
     err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT),
@@ -175,7 +191,9 @@ void cache_sid(void)
         cached_zygote_sid = 0;
     } else {
         pr_info("Cached zygote SID: %u\n", cached_zygote_sid);
-		susfs_zygote_sid = cached_zygote_sid;
+#ifdef CONFIG_KSU_SUSFS
+        susfs_zygote_sid = cached_zygote_sid;
+#endif
     }
 
     err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT),
@@ -185,11 +203,14 @@ void cache_sid(void)
         cached_init_sid = 0;
     } else {
         pr_info("Cached init SID: %u\n", cached_init_sid);
+#ifdef CONFIG_KSU_SUSFS
         susfs_init_sid = cached_init_sid;
+#endif
     }
 
+#ifdef CONFIG_KSU_SUSFS
     err = security_secctx_to_secid(PRIV_APP_CONTEXT, strlen(PRIV_APP_CONTEXT),
-                       &cached_priv_app_sid);
+                                   &cached_priv_app_sid);
     if (err) {
         pr_warn("Failed to cache priv_app SID: %d\n", err);
         cached_priv_app_sid = 0;
@@ -198,6 +219,7 @@ void cache_sid(void)
         pr_info("Cached priv_app SID: %u\n", cached_priv_app_sid);
         susfs_priv_app_sid = cached_priv_app_sid;
     }
+#endif
 
     err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT),
                                    &ksu_file_sid);
@@ -264,6 +286,23 @@ bool is_init(const struct cred *cred)
     return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
 }
 
+void escape_to_root_for_adb_root(void)
+{
+    struct cred *cred = prepare_creds();
+    if (!cred) {
+        pr_err("Failed to prepare adbd's creds!\n");
+        return;
+    }
+
+    if (transive_to_domain(KERNEL_SU_CONTEXT, cred, true)) {
+        pr_err("transive domain failed.\n");
+        abort_creds(cred);
+        return;
+    }
+    commit_creds(cred);
+}
+
+#ifdef CONFIG_KSU_SUSFS
 bool susfs_is_sid_equal(const struct cred *cred, u32 sid)
 {
     if (!cred || !sid)
@@ -281,3 +320,4 @@ bool susfs_is_current_ksu_domain(void)
 {
     return likely(susfs_ksu_sid) ? current_sid() == susfs_ksu_sid : is_ksu_domain();
 }
+#endif

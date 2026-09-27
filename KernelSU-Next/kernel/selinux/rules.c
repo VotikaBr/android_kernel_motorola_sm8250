@@ -82,6 +82,13 @@ static inline rwlock_t *ksu_get_policy_rwlock(void) { extern rwlock_t policy_rwl
 #else
 static inline rwlock_t *ksu_get_policy_rwlock(void) { return NULL; }
 #endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0) || defined(KSU_COMPAT_HAS_BACKPORTED_CPUS_PTR)
+static inline const cpumask_t *ksu_get_current_cpumask_t() { return current->cpus_ptr; }
+#else
+static inline cpumask_t *ksu_get_current_cpumask_t() { return &current->cpus_allowed; }
+#endif
+
 #endif // #ifndef SELINUX_POLICY_INSTEAD_SELINUX_SS
 
 static int apply_kernelsu_rules_fn(void *ptr)
@@ -159,6 +166,18 @@ static int apply_kernelsu_rules_fn(void *ptr)
     ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "read");
     ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "open");
     ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "getattr");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "read");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "write");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "connectto");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "getopt");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "getattr");
+
+    // use memfd created by su domain
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "execute");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "getattr");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "map");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "read");
+    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "write");
 
     // bootctl
     ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "dir", "search");
@@ -189,9 +208,23 @@ void apply_kernelsu_rules()
 	}
 
 #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-	struct selinux_policy *pol, *old_pol = selinux_state.policy;
+	struct selinux_policy *pol, *old_pol;
 	mutex_lock(&selinux_state.policy_mutex);
-	pol = ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+	/*
+	 * Read the RCU-protected pointer *inside* the critical section.
+	 * Loading it before the lock and then "protecting" the local copy
+	 * with rcu_dereference_protected() protects nothing: the load itself
+	 * is still a racy sparse read, and the peer that publishes a new
+	 * policy frees the old one right after dropping the mutex.
+	 * See dev branch c6f3978e.
+	 */
+	old_pol = rcu_dereference_protected(selinux_state.policy,
+					    lockdep_is_held(&selinux_state.policy_mutex));
+	if (!old_pol) {
+		pr_err("selinux policy is NULL, skipping rules application\n");
+		goto out_unlock;
+	}
+	pol = ksu_dup_sepolicy(old_pol);
 	if (!pol) {
 		pr_err("failed to dup selinux_policy\n");
 		goto out_unlock;
@@ -208,25 +241,23 @@ void apply_kernelsu_rules()
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);
 #else
-    cpumask_t old_mask;
+
+	cpumask_t old_mask;
 	db = get_policydb();
 	rwlock_t *lock = ksu_get_policy_rwlock();
 	
 	if (!lock)
 		goto do_stop_machine;
 
-    /*
+	/*
 	 * HACK: write_lock() is held with preempt enabled. DO NOT let the
 	 * task be migrated to any other CPU than the current CPU. And since
 	 * set_cpus_allowed_ptr() can sleep, use raw_smp_processor_id() to get
 	 * current CPU and bypass preemption checks.
 	 */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
-	cpumask_copy(&old_mask, current->cpus_ptr);
-#else
-	cpumask_copy(&old_mask, &current->cpus_allowed);
-#endif
+	cpumask_copy(&old_mask, ksu_get_current_cpumask_t());
 	set_cpus_allowed_ptr(current, cpumask_of(raw_smp_processor_id()));
+
 	write_lock(lock);
 	preempt_enable();
 
@@ -252,7 +283,7 @@ has_current_mm:
 out_unlock:
 	preempt_disable();
 	write_unlock(lock);
-    set_cpus_allowed_ptr(current, &old_mask);
+	set_cpus_allowed_ptr(current, &old_mask);
 	goto out_flush;
 
 do_stop_machine:
@@ -571,9 +602,14 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 
 	mutex_lock(&selinux_state.policy_mutex);
 
-	old_pol = selinux_state.policy;
-	pol = ksu_dup_sepolicy(rcu_dereference_protected(
-		old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+	/* Read the RCU-protected pointer inside the lock, see apply_kernelsu_rules(). */
+	old_pol = rcu_dereference_protected(selinux_state.policy,
+					    lockdep_is_held(&selinux_state.policy_mutex));
+	if (!old_pol) {
+		ret = -ENOMEM;
+		goto out_unlock;
+	}
+	pol = ksu_dup_sepolicy(old_pol);
 	if (!pol) {
 		ret = -ENOMEM;
 		goto out_unlock;
@@ -709,7 +745,7 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 	u8 *payload;
 	int ret = 0;
 	int success_cmd_count = 0;
-    cpumask_t old_mask;
+	cpumask_t old_mask;
 
 	if (!user_data || !data_len)
 		return -EINVAL;
@@ -745,12 +781,9 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 	 * set_cpus_allowed_ptr() can sleep, use raw_smp_processor_id() to get
 	 * current CPU and bypass preemption checks.
 	 */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
-	cpumask_copy(&old_mask, current->cpus_ptr);
-#else
-	cpumask_copy(&old_mask, &current->cpus_allowed);
-#endif
+	cpumask_copy(&old_mask, ksu_get_current_cpumask_t());
 	set_cpus_allowed_ptr(current, cpumask_of(raw_smp_processor_id()));
+
 	write_lock(lock);
 	preempt_enable();
 
@@ -774,7 +807,7 @@ has_current_mm:
 out_unlock:
 	preempt_disable();
 	write_unlock(lock);
-    set_cpus_allowed_ptr(current, &old_mask);
+	set_cpus_allowed_ptr(current, &old_mask);
 	goto out_done;
 
 do_stop_machine:

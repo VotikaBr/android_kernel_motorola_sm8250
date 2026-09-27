@@ -1,24 +1,47 @@
-# KSUN 33219 + SuSFS 2.2.0 + KSU_Toolkit — Kernel pstar sm8250 4.19
+# KSUN 33240 + SuSFS 2.3.0 + KSU_Toolkit — Kernel pstar sm8250 4.19
 
-Modo do gancho: Inline (SuSFS)
+Modo do gancho: Inline (Manual / SuSFS)
 
-Metamodule status: Não instalado
-
-Versão SuSFS: Suportado | v2.2.0 (NON-GKI)
+Versão SuSFS: Suportado | v2.3.0 (NON-GKI)
 
 Versão do kernel: 4.19.325-cip134-st18-perf-g89c7b24f7db0 (aarch64)
 
-
-## Estado Após Atualização (2026-07-26)
+## Estado Atual (2026-09-27)
 
 ### Versões
-- KernelSU-Next: **33219** (fallback tag `v3.3.0-legacy`)
-- SuSFS: **v2.2.0 (NON-GKI)** — já integrado em `fs/susfs.c` + `include/linux/susfs.h`
-- UAPI Version: **2** (`KERNEL_SU_UAPI_VERSION 2`)
+- KernelSU-Next: **33240** (`v3.4.0-legacy`)
+- SuSFS: **v2.3.0 (NON-GKI)** — integrado em `fs/susfs.c` + `include/linux/susfs.h`
+- UAPI Version: **4** (`KERNEL_SU_UAPI_VERSION 4` - compatível com Manager v3.4.0)
 - KSU_APP_PROFILE_VER: **4**
 - FILE_FORMAT_VERSION (allowlist): **4**
+- Manager Signature: Cert size `0x3e6`, sha256 `79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7` (pacote `yhaxhr.birgvn.bmwbne`, UID 10401)
 
-### Causa do Erro Inicial
+### Causa Diagnosticada da Falha em Conceder Root (Logs ADB)
+1. **Rejeição do descritor de arquivo do driver para o Manager em `ksu_handle_sys_reboot()` (`supercall.c`)**:
+   - Quando o Manager (`yhaxhr.birgvn.bmwbne`, UID 10401) chamava `libksud.so install`, o `ksud` executava como UID 10401 e invocava `reboot(KSU_INSTALL_MAGIC1, KSU_INSTALL_MAGIC2, &fd)`.
+   - O kernel verificava `if (current_uid().val != 0) return 0;`, recusando a concessão do FD do driver para o Manager!
+   - Isso gerava no logcat: `E KernelSU Next: ksud::cli: Error: ksuctl failed: could not retrieve kernelsu driver fd` e o diretório `/data/adb` não era criado/inicializado.
+   - Como o `ksud` falhava na instalação, o Manager caía em fallback via `RootService` com jar em cache (`SecurityException: Writable dex file '/data/user_de/0/.../cache/main.jar' is not allowed` no Android 14+ ART).
+   - **Correção**: Ajustado `ksu_handle_sys_reboot` para autorizar `uid == 0`, `is_manager()` e UIDs permitidos (`ksu_is_allow_uid_for_current()`), retornando o FD sincronicamente via `copy_to_user`.
+
+2. **Desmontagem indevida e flag umounted em `setuid_hook.c`**:
+   - `ksu_handle_setresuid()` caía incondicionalmente em `ksu_handle_umount()` e `susfs_set_current_proc_umounted()` para qualquer app, inclusive apps com concessão root ativa (`ksu_is_allow_uid_for_current(new_uid)`).
+   - **Correção**: Alinhado com o patch oficial do SuSFS 2.2/2.3 (`fix_setuid_hook.c.patch`). Apps permitidos recebem bypass do seccomp e retornam 0 sem sofrer umount nem marcação de proc umounted no SuSFS.
+
+3. **Falha de root em aplicativos (`su` -> `sh`)**:
+   - Em `sucompat.c`, havia uma checagem preliminar `ksu_filp_open_compat(KSUD_PATH)` que tentava abrir `/data/adb/ksud` antes da elevação de credenciais do processo (`escape_with_root_profile()`).
+   - Como `/data/adb` possui permissão 0700 (root), a chamada falhava com `-EACCES` e ativava o fallback `pr_warn("ksud inaccessible, applying fallback to sh")`.
+   - O aplicativo (ex: ZArchiver) executava `/system/bin/sh` em vez do binário `ksud`, falhando na negociação do protocolo root do KernelSU.
+   - **Correção**: Removido o teste espúrio e restaurada a substituição direta por `ksud_path` com elevação `escape_with_root_profile()`, garantindo que todo `su` execute o `ksud`.
+
+4. **Metamodule e scripts de inicialização não ativados no boot**:
+   - O Android `init` moderno (Android 14/15/16/17 / InfinityX) lê arquivos de configuração através de `ReadFdToString` (`system/libbase/file.cpp`), que chama `fstat(fd, &sb)` e faz o loop de leitura `while (bytes_read < sb.st_size)`.
+   - Como `newfstatat` (usado pelo ARM64 com `AT_EMPTY_PATH`) não ajustava o tamanho retornado de `init.rc`, o `init` parava de ler exatamente no fim do arquivo original, sem jamais ler o bloco injetado `KERNEL_SU_RC` (`exec ... /data/adb/ksud post-fs-data`).
+   - Consequentemente, o estágio `post-fs-data` nunca era chamado pelo `init` após a reinicialização, mantendo os módulos em `/data/adb/modules_update` e o aviso "Pending changes: Reboot to apply changes first".
+   - **Correção**: Adicionado o hook `ksu_handle_newfstat_ret` em `newfstatat` (`flag & AT_EMPTY_PATH`) e em `newfstat` em `fs/stat.c`, e adicionado `/etc/init/hw/init.rc` aos caminhos reconhecidos em `is_init_rc`. O `init` agora recebe `st_size = orig_size + ksu_rc_len` e lê o bloco `post-fs-data` completo.
+
+5. **Símbolos indefinidos de SuSFS e linker**:
+   - No `pstar-default.config`, garantido `CONFIG_KSU_SUSFS=y` junto com todos os sub-recursos (`SUS_PATH`, `SUS_MOUNT`, `SUS_KSTAT`, `SUS_MAP`, `OPEN_REDIRECT`, etc.), garantindo que `fs/susfs.o` seja compilado e linkado no `vmlinux`.
 "Incompatibilidade entre a versão da uapi do gerenciador (2) e a versão da uapi do driver KernelSU (0)"
 - `struct ksu_get_info_cmd` não tinha campo `uapi_version`
 - `KERNEL_SU_UAPI_VERSION` não estava definido

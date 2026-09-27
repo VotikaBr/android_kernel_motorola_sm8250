@@ -13,7 +13,7 @@
 #include <linux/syscalls.h>
 #endif
 
-#include "kernel_umount.h"
+#include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
 #include "policy/allowlist.h"
 #include "selinux/selinux.h"
@@ -131,10 +131,6 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
 	}
 
 	if (!ksu_cred) {
-		return 0;
-	}
-
-	if (!ksu_uid_should_umount(new_uid) && !is_isolated_process(new_uid)) {
 		return 0;
 	}
 
