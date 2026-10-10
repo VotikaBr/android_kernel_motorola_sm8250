@@ -29,6 +29,7 @@
 #include "policy/feature.h"
 #include "klog.h" // IWYU pragma: keep
 #include "runtime/ksud.h"
+#include "runtime/ksud_boot.h"
 #include "compat/kernel_compat.h"
 #include "sucompat.h"
 #include "policy/app_profile.h"
@@ -156,7 +157,7 @@ static long ksu_handle_execve_sucompat_common(const char __user **filename_user,
 	unsigned long addr;
 
 	if (execveat && ((int)PT_REGS_PARM1(regs) != AT_FDCWD ||
-			 (int)PT_REGS_SYSCALL_PARM4(regs) != 0))
+			 (int)PT_REGS_PARM5(regs) != 0))
 		goto do_orig_execve;
 
 	if (unlikely(!filename_user))
@@ -198,7 +199,18 @@ static long ksu_handle_execve_sucompat_common(const char __user **filename_user,
 		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 		goto do_orig_execve;
 	}
-
+	/*
+	 * The ksud presence flag is kept current by the /data/adb observer
+	 * (no file open here: /data/adb is root-only, so an open as the
+	 * calling app would always fail). Before ksud is installed use sh so
+	 * the manager can still get a root shell to install it.
+	 */
+	if (READ_ONCE(ksu_ksud_present)) {
+		*filename_user = ksud_user_path();
+	} else {
+		*filename_user = sh_user_path();
+		ksu_recheck_ksud();
+	}
 	ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 do_orig_execve:
 	return 0;

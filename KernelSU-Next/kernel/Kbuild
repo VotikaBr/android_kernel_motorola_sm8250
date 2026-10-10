@@ -87,7 +87,7 @@ endif
 
 # Keep a safe minimum version for vendored trees without a dedicated
 # KernelSU-Next git repository.
-KSU_MIN_COMPAT_VERSION := 33240
+KSU_MIN_COMPAT_VERSION := 33333
 
 # Calculate version if git version is available
 ifdef KSU_GIT_VERSION_VALID
@@ -120,7 +120,7 @@ ifdef KSU_GIT_VERSION_VALID
 $(eval KSU_VERSION_TAG=$(KSU_GIT_TAG))
 else
 $(warning "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!")
-KSU_VERSION_TAG_FALLBACK := v3.4.0-legacy
+KSU_VERSION_TAG_FALLBACK := v3.4.1-legacy
 KSU_VERSION_TAG=$(KSU_VERSION_TAG_FALLBACK)
 endif
 

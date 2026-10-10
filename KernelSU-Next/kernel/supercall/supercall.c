@@ -122,11 +122,13 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 		int fd;
 
 		/*
-		 * Only allow root, the manager app, or processes allowed for su
-		 * to obtain the driver fd via reboot hook.
+		 * Every other command below guards on privilege; the fd install
+		 * did not, so any unprivileged app could hand itself a working
+		 * anon_ksu descriptor (and fingerprint the exact build through
+		 * the always_allow GET_INFO / CHECK_SAFEMODE ioctls).
+		 * Restrict to root, manager, and apps allowed for su.
 		 */
-		if (current_uid().val != 0 && !is_manager() &&
-		    !ksu_is_allow_uid_for_current(current_uid().val))
+		if (current_uid().val != 0 && !allowed_for_su())
 			return 0;
 
 		fd = ksu_install_fd();

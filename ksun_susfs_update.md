@@ -1,4 +1,4 @@
-# KSUN 33240 + SuSFS 2.3.0 + KSU_Toolkit — Kernel pstar sm8250 4.19
+# KSUN 33333 + SuSFS 2.3.0 + KSU_Toolkit — Kernel pstar sm8250 4.19
 
 Modo do gancho: Inline (Manual / SuSFS)
 
@@ -6,12 +6,12 @@ Versão SuSFS: Suportado | v2.3.0 (NON-GKI)
 
 Versão do kernel: 4.19.325-cip134-st18-perf-g89c7b24f7db0 (aarch64)
 
-## Estado Atual (2026-09-27)
+## Estado Atual (2026-10-10)
 
 ### Versões
-- KernelSU-Next: **33240** (`v3.4.0-legacy`)
+- KernelSU-Next: **33333** (`v3.4.1-legacy`)
 - SuSFS: **v2.3.0 (NON-GKI)** — integrado em `fs/susfs.c` + `include/linux/susfs.h`
-- UAPI Version: **4** (`KERNEL_SU_UAPI_VERSION 4` - compatível com Manager v3.4.0)
+- UAPI Version: **4** (`KERNEL_SU_UAPI_VERSION 4` - compatível com Manager v3.4.1)
 - KSU_APP_PROFILE_VER: **4**
 - FILE_FORMAT_VERSION (allowlist): **4**
 - Manager Signature: Cert size `0x3e6`, sha256 `79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7` (pacote `yhaxhr.birgvn.bmwbne`, UID 10401)
@@ -62,28 +62,27 @@ Versão do kernel: 4.19.325-cip134-st18-perf-g89c7b24f7db0 (aarch64)
 | `KernelSU-Next/kernel/policy/app_profile.h` | Adicionado `#define TIF_KSU_DISABLE_ESCAPE_WITH_ROOT 63` |
 | `KernelSU-Next/kernel/policy/app_profile.c` | Verificação de `TIF_KSU_DISABLE_ESCAPE_WITH_ROOT`, set de `TIF_` quando `FLAG_KSU_NO_NEW_PRIVS` |
 | `KernelSU-Next/kernel/policy/allowlist.c` | `FILE_FORMAT_VERSION 3→4`, `profile_valid` usa `!=` em vez de `<`, removido código de migração inline, adicionado `migrate_profile()`, `ksu_load_allow_list` com `kAppProfileSizePreV4=776`, auto-persist quando versão antiga |
-| `KernelSU-Next/kernel/Kbuild` | `KSU_MIN_COMPAT_VERSION 33201→33219`, tag fallback `v3.2.0-legacy→v3.3.0-legacy` |
+| `KernelSU-Next/kernel/Kbuild` | `KSU_MIN_COMPAT_VERSION 33333`, tag fallback `v3.4.1-legacy` |
+| `KernelSU-Next/kernel/selinux/Makefile` | Adicionados os caminhos de include do diretório KernelSU pai para o build in-tree |
+| `KernelSU-Next/kernel/selinux/sepolicy.c` | Backport das correções v3.4.1 de iteração avtab, contabilidade de `db->len` e atualização de permissões xperm |
+| `KernelSU-Next/kernel/selinux/rules.c` | A correção RCU-protected SELinux policy do v3.4.1 já estava aplicada na árvore local |
+| `KernelSU-Next/kernel/include/util.h` | A ligação `ksyscall` necessária para o kernel arm64 4.19 já estava aplicada na árvore local |
 
 ### Pasta exemplo/
 ```
-exemplo/ksun/                    — KSUN base 33219 (legacy branch, 2992 commits)
-  drivers/kernelsu/              — Driver kernel (= KernelSU-Next/kernel/)
-  KernelSU-Next/uapi/            — UAPI headers para manager
-
-exemplo/kernel_patches-main/
-  next/susfs_fix_patches/v2.2.0/ — Patches SuSFS 2.2.0 para KSUN (fix_Kbuild, fix_init, etc.)
-  next/next_hooks.patch           — Hooks para kernel ≥4.19 (inline, não kprobes)
-  next/next_hooks_4.14.patch      — Hooks para kernel ≤4.14
-
-exemplo/susfs4ksu-gki-android16-6.12/
-  kernel_patches/                — Patches susfs para GKI android16 6.12
-  ksu_module_susfs/              — Módulo KSU susfs
+/home/votikabr/Downloads/exemplos/KernelSU-Next-legacy/
+  kernel/                        — Base legacy de KernelSU-Next para comparação
+/home/votikabr/Downloads/exemplos/android_kernel_motorola_sm8250/
+                                  — Snapshot de referência 33240 + SUSFS 2.3.0
+/home/votikabr/Downloads/exemplos/kernel_patches-main/
+  next/susfs_fix_patches/v2.2.0/ — Patches de referência SUSFS 2.2.0
+/home/votikabr/Downloads/exemplos/susfs4ksu-gki-android/
+                                  — Patches GKI; não aplicáveis diretamente ao pstar NON-GKI
 ```
 
 ### Lógica de Versão KSUN no Kbuild
-- Fórmula nova (exemplo): `30000 + git_commits + 200`
-- Fórmula atual (sm8250): `30000 + git_commits + 150` com floor de 33219
-- Como `sm8250/KernelSU-Next` NÃO é git separado (mesmo root do kernel), git_count NÃO é usado → usa sempre fallback = 33219
+- Em checkout KernelSU-Next separado: `30000 + git_commits + 289`, com piso em `33333`
+- No kernel pstar, `KernelSU-Next` compartilha o repositório do kernel; o Kbuild usa o fallback **33333** e a tag `v3.4.1-legacy`
 
 ### Hook Mode
 - Kernel 4.19 usa **inline hooks** (não kprobes)
@@ -97,7 +96,7 @@ exemplo/susfs4ksu-gki-android16-6.12/
 - `GET_SULOG_DUMP_V2 = 10010` — dump de sulog
 - `ksuver_override` — variável global que sobrescreve KERNEL_SU_VERSION
 
-### SuSFS 2.2.0 Features (já integradas no kernel)
+### SuSFS 2.3.0 Features (já integradas no kernel)
 - `CONFIG_KSU_SUSFS` — enable susfs
 - `CONFIG_KSU_SUSFS_SUS_PATH` — esconder paths suspeitos
 - `CONFIG_KSU_SUSFS_SUS_MOUNT` — esconder mounts
@@ -120,3 +119,13 @@ Ambos registrados em `dispatch.c` com handlers diferentes.
 - `kAppProfileSizePreV4 = 776` bytes (tamanho antigo)
 - `migrate_profile()` converte v2/v3 → v4: seta `FLAG_KSU_NO_NEW_PRIVS` para v3
 - `ksu_load_allow_list()` auto-detecta versão e persiste após migração
+
+## Backport das correções da branch `legacy` (24/09 – 07/10/2026)
+
+Merge 3-way (base: #1551 → ponta `8869bd7`) preservando as adaptações locais (SUSFS, hooks manuais, KSU_Toolkit):
+
+- pin manager package name (#3868): `get_pkg_from_apk_dir_path`, `crown_manager`/`maybe_manager_apk_dir` em throne_tracker.c, log em init.c.
+- Service stage (#3800/#1573): `EVENT_SERVICES`, UAPI versão 5.
+- sucompat: fallback para `sh` até o ksud existir; presença do ksud mantida por observer em `/data/adb` (pkg_observer.c, boot_event.c). Local: a flag é usada também em contexto de processo (sem `open`, pois `/data/adb` é 0700).
+- sucompat: execveat checa `PARM5` (flags); supercall: install-fd restrito a root/manager/su-allowed (`allowed_for_su`).
+- selinux_hide (retry do hook, dedup/sync, ghost declaration, check_context por app-uid), app_profile, rules, dispatch, setuid_hook, apk_sign, includes/guards.
