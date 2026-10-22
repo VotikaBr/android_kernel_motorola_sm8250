@@ -160,3 +160,8 @@ void __init ksu_lsm_hook_init(void)
 	return;
 }
 #endif
+
+void __exit ksu_lsm_hook_exit(void)
+{
+	return;
+}

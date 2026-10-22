@@ -2,6 +2,7 @@ kernelsu-objs := core/init.o
 
 kernelsu-objs += compat/kernel_compat.o
 kernelsu-objs += feature/kernel_umount.o
+kernelsu-objs += feature/module_blacklist.o
 kernelsu-objs += feature/sulog.o
 kernelsu-objs += feature/sucompat.o
 
@@ -14,6 +15,7 @@ kernelsu-objs += infra/file_wrapper.o
 kernelsu-objs += infra/event_queue.o
 kernelsu-objs += infra/seccomp_cache.o
 kernelsu-objs += infra/su_mount_ns.o
+kernelsu-objs += infra/symbol_resolver.o
 
 ifneq ($(CONFIG_KSU_DISABLE_MANAGER),y)
 kernelsu-objs += manager/apk_sign.o
@@ -41,6 +43,7 @@ kernelsu-objs += supercall/supercall.o
 
 kernelsu-objs += feature/adb_root.o
 kernelsu-objs += feature/selinux_hide.o
+kernelsu-objs += feature/shell_su_adb_only.o
 
 ifdef KBUILD_EXTMOD
 ifeq ($(CONFIG_KSU_DISABLE_MANAGER),y)
@@ -87,7 +90,7 @@ endif
 
 # Keep a safe minimum version for vendored trees without a dedicated
 # KernelSU-Next git repository.
-KSU_MIN_COMPAT_VERSION := 33333
+KSU_MIN_COMPAT_VERSION := 33355
 
 # Calculate version if git version is available
 ifdef KSU_GIT_VERSION_VALID
@@ -120,7 +123,7 @@ ifdef KSU_GIT_VERSION_VALID
 $(eval KSU_VERSION_TAG=$(KSU_GIT_TAG))
 else
 $(warning "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!")
-KSU_VERSION_TAG_FALLBACK := v3.4.1-legacy
+KSU_VERSION_TAG_FALLBACK := v3.4.2-legacy
 KSU_VERSION_TAG=$(KSU_VERSION_TAG_FALLBACK)
 endif
 

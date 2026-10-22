@@ -5,6 +5,7 @@
 #include <linux/workqueue.h>
 
 #include "feature/selinux_hide.h"
+#include "policy/feature.h"
 
 #include "policy/allowlist.h"
 #include "klog.h" // IWYU pragma: keep
@@ -72,6 +73,8 @@ void on_post_fs_data(void)
 	// sanity check, this may influence the performance
 	ksu_stop_input_hook_runtime();
 	ksu_selinux_hide_handle_post_fs_data();
+	// retry forced features which failed at second stage
+	ksu_feature_apply_forced();
 }
 
 extern void ext4_unregister_sysfs(struct super_block *sb);
@@ -109,5 +112,6 @@ void on_boot_completed(void)
     ksu_boot_completed = true;
     pr_info("on_boot_completed!\n");
     track_throne(true);
+    ksu_selinux_hide_drop_backup_if_unused();
     ksu_avc_spoof_late_init();
 }

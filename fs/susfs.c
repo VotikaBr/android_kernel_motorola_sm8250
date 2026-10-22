@@ -734,15 +734,23 @@ out_copy_to_user:
 int susfs_spoof_cmdline_or_bootconfig(struct seq_file *m) {
 	unsigned seq;
 	int err = -EINVAL;
+	char *buf = (char *)kmalloc(SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE, GFP_KERNEL);
 
+	if (!buf) {
+		return -ENOMEM;
+	}
 	do {
 		seq = read_seqbegin(&susfs_fake_cmdline_or_bootconfig_seqlock);
 		if (susfs_is_fake_cmdline_or_bootconfig_set) {
-			seq_puts(m, fake_cmdline_or_bootconfig);
+			strscpy(buf, fake_cmdline_or_bootconfig, SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE);
 			err = 0;
 		}
 	} while (read_seqretry(&susfs_fake_cmdline_or_bootconfig_seqlock, seq));
 
+	if (!err) {
+		seq_puts(m, buf);
+	}
+	kfree(buf);
 	return err;
 }
 #endif
@@ -1108,10 +1116,14 @@ void susfs_get_enabled_features(void __user **user_info) {
 	struct st_susfs_enabled_features *info = (struct st_susfs_enabled_features *)kzalloc(sizeof(struct st_susfs_enabled_features), GFP_KERNEL);
 	char *buf_ptr = NULL;
 	size_t copied_size = 0;
+	int err = 0;
 
 	if (!info) {
-		info->err = -ENOMEM;
-		goto out_copy_to_user;
+		err = -ENOMEM;
+		if (copy_to_user(&((struct st_susfs_enabled_features __user*)*user_info)->err, &err, sizeof(err)))
+			err = -EFAULT;
+		SUSFS_LOGI("CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: %d\n", err);
+		return;
 	}
 
 	if (copy_from_user(info, (struct st_susfs_enabled_features __user*)*user_info, sizeof(struct st_susfs_enabled_features))) {

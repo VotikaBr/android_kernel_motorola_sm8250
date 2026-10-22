@@ -696,3 +696,9 @@ void __exit ksu_selinux_hide_exit(void)
 	 * still-open /sys/fs/selinux/status fd may reference it indefinitely,
 	 * and there is no refcount tying page lifetime to open-file lifetime. */
 }
+
+void ksu_selinux_hide_drop_backup_if_unused(void)
+{
+	/* In 4.19, selinux_hide uses fake status page and write interception
+	 * rather than storing a separate backup_sepolicy struct. */
+}

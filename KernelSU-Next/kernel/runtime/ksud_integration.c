@@ -43,6 +43,7 @@
 #include "ksud_boot.h"
 #include "feature/selinux_hide.h"
 #include "selinux/selinux.h"
+#include "policy/feature.h"
 #include "compat/kernel_compat.h"
 
 static const char KERNEL_SU_RC[] =
@@ -271,6 +272,8 @@ static void ksu_initialize_selinux_tw_func(struct callback_head *cb)
 	apply_kernelsu_rules();
 	cache_sid();
 	setup_ksu_cred();
+	// after apply_kernelsu_rules, so that selinux_hide has its sepolicy backup
+	ksu_feature_apply_forced();
 	kfree(cb);
 }
 
@@ -333,6 +336,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 			pr_info("/init second_stage executed\n");
 			apply_kernelsu_rules();
 			setup_ksu_cred();
+			ksu_feature_apply_forced();
 			init_second_stage_executed = true;
 		} else if (count(*argv, MAX_ARG_STRINGS) == 1 &&
 			   !init_second_stage_executed && envp) {
@@ -364,6 +368,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 						pr_info("/init second_stage executed\n");
 						apply_kernelsu_rules();
 						setup_ksu_cred();
+						ksu_feature_apply_forced();
 						init_second_stage_executed = true;
 					}
 				}
